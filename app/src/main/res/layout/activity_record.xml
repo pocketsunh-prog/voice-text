@@ -95,6 +95,44 @@
         android:padding="16dp"
         app:layout_constraintBottom_toTopOf="@id/controls_container">
 
+        <!-- Zoom controls row -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="end|center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/btn_zoom_out"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:clickable="true"
+                android:contentDescription="@string/zoom_out"
+                android:focusable="true"
+                android:gravity="center"
+                android:text="A-"
+                android:textColor="@color/accent_light"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/btn_zoom_in"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:layout_marginStart="4dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:clickable="true"
+                android:contentDescription="@string/zoom_in"
+                android:focusable="true"
+                android:gravity="center"
+                android:text="A+"
+                android:textColor="@color/accent_light"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+        </LinearLayout>
+
         <!-- Original text -->
         <TextView
             android:layout_width="wrap_content"

@@ -27,6 +27,8 @@
     <string name="original_text">Original</string>
     <string name="translated_text">Translated</string>
     <string name="translation_language">Translation: %1$s</string>
+    <string name="zoom_in">Zoom In</string>
+    <string name="zoom_out">Zoom Out</string>
 
     <!-- Settings -->
     <string name="settings">Settings</string>
@@ -52,6 +54,7 @@
     <string name="copy">Copy</string>
     <string name="close">Close</string>
     <string name="export_audio">Export Audio</string>
+    <string name="export_format">Export Format</string>
     <string name="exporting">Exporting…</string>
     <string name="export_success">exported successfully</string>
     <string name="export_failed">Export failed</string>

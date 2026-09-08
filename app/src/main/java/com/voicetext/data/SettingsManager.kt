@@ -4,16 +4,28 @@ import android.content.Context
 import android.content.SharedPreferences
 
 /**
- * Persists user preferences (speech language, translation language) using SharedPreferences.
+ * Persists user preferences (speech language, translation language, export format) using SharedPreferences.
  */
 object SettingsManager {
 
     private const val PREFS_NAME = "voice_text_settings"
     private const val KEY_SPEECH_LANGUAGE = "speech_language"
     private const val KEY_TRANSLATION_LANGUAGE = "translation_language"
+    private const val KEY_EXPORT_FORMAT = "export_format"
 
     const val DEFAULT_SPEECH_LANGUAGE = "english"
     const val DEFAULT_TRANSLATION_LANGUAGE = "chinese"
+    const val DEFAULT_EXPORT_FORMAT = "auto"
+
+    enum class ExportFormat(val id: String, val displayName: String, val extension: String) {
+        AUTO("auto", "Auto (MP3 or AAC)", "mp3"),
+        MP3("mp3", "MP3", "mp3"),
+        AAC("aac", "AAC (M4A)", "m4a");
+
+        companion object {
+            fun fromId(id: String): ExportFormat = entries.firstOrNull { it.id == id } ?: AUTO
+        }
+    }
 
     private fun prefs(context: Context): SharedPreferences =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -30,6 +42,13 @@ object SettingsManager {
 
     fun setTranslationLanguage(context: Context, language: String) {
         prefs(context).edit().putString(KEY_TRANSLATION_LANGUAGE, language).apply()
+    }
+
+    fun getExportFormat(context: Context): ExportFormat =
+        ExportFormat.fromId(prefs(context).getString(KEY_EXPORT_FORMAT, DEFAULT_EXPORT_FORMAT) ?: DEFAULT_EXPORT_FORMAT)
+
+    fun setExportFormat(context: Context, format: ExportFormat) {
+        prefs(context).edit().putString(KEY_EXPORT_FORMAT, format.id).apply()
     }
 
     /**

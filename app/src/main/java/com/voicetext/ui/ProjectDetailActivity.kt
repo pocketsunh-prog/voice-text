@@ -5,6 +5,7 @@ import android.media.MediaFormat
 import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
@@ -75,6 +76,12 @@ class ProjectDetailActivity : AppCompatActivity() {
                         lifecycleScope.launch {
                             File(recording.audioPath).delete()
                             recordingDao.delete(recording)
+                            // Update project recording count
+                            val project = projectDao.getById(projectId)
+                            if (project != null) {
+                                project.recordingCount = recordingDao.getCountForProject(projectId)
+                                projectDao.update(project)
+                            }
                         }
                     }
                     .setNegativeButton(R.string.cancel, null)
@@ -104,6 +111,12 @@ class ProjectDetailActivity : AppCompatActivity() {
     }
 
     private fun playRecording(recording: Recording) {
+        // Check if audio file exists (may not exist if recorded without audio)
+        val audioFile = File(recording.audioPath)
+        if (recording.audioPath.isEmpty() || !audioFile.exists()) {
+            Toast.makeText(this, "No audio file available for this recording", Toast.LENGTH_SHORT).show()
+            return
+        }
         try {
             player?.release()
             player = MediaPlayer().apply {
@@ -112,14 +125,14 @@ class ProjectDetailActivity : AppCompatActivity() {
                 start()
             }
         } catch (e: Exception) {
-            Toast.makeText(this, "Cannot play audio", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Cannot play audio: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 
     private fun translateRecording(recording: Recording) {
         val textToTranslate = recording.transcribedText
         if (textToTranslate.isBlank()) {
-            Toast.makeText(this, "No text to translate", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, R.string.no_text_to_translate, Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -131,13 +144,22 @@ class ProjectDetailActivity : AppCompatActivity() {
         }
         val sourceLang = SettingsManager.getSpeechLanguage(this)
 
+        // Check if source and target are the same
+        if (sourceLang.lowercase() == targetLang.lowercase()) {
+            Toast.makeText(this, "Source and target language are the same", Toast.LENGTH_SHORT).show()
+            return
+        }
+
         adapter.setTranslating(recording.id, true)
 
         lifecycleScope.launch {
             try {
+                Log.d("Translate", "Translating from $sourceLang to $targetLang: ${textToTranslate.take(50)}...")
                 val result = TranslationHelper.translate(textToTranslate, targetLang, sourceLang)
+                Log.d("Translate", "Translation result: ${result.translatedText.take(50)}...")
                 adapter.setTranslatedText(recording.id, result.translatedText)
             } catch (e: Exception) {
+                Log.e("Translate", "Translation failed", e)
                 val errorMsg = "Translation failed: ${e.message ?: "Unknown error"}"
                 adapter.setTranslatedText(recording.id, errorMsg)
                 Toast.makeText(this@ProjectDetailActivity, errorMsg, Toast.LENGTH_LONG).show()
@@ -149,7 +171,7 @@ class ProjectDetailActivity : AppCompatActivity() {
 
     /**
      * Start the export flow: store the recording and launch SAF document picker.
-     * The exporter will try MP3 first, then fall back to AAC (M4A) automatically.
+     * Uses the user's preferred export format from settings.
      */
     private fun startExportFlow(recording: Recording) {
         val inputFile = File(recording.audioPath)
@@ -162,17 +184,30 @@ class ProjectDetailActivity : AppCompatActivity() {
         pendingExportRecording = recording
         adapter.setExporting(recording.id, true)
 
-        // Determine the best available format for the suggested filename
-        val format = if (isEncoderAvailable(MediaFormat.MIMETYPE_AUDIO_MPEG)) {
-            Mp3Exporter.Format.MP3
-        } else {
-            Mp3Exporter.Format.AAC
-        }
+        // Determine the format based on user setting
+        val exportFormat = SettingsManager.getExportFormat(this)
+        val resolvedFormat = resolveExportFormat(exportFormat)
 
         // Launch SAF picker with a suggested filename
         val safeTitle = recording.title.replace(Regex("[^a-zA-Z0-9._-]"), "_")
-        val suggestedName = "${safeTitle}.${format.extension}"
+        val suggestedName = "${safeTitle}.${resolvedFormat.extension}"
         createDocumentLauncher.launch(suggestedName)
+    }
+
+    /**
+     * Resolve the export format based on user preference and device capability.
+     */
+    private fun resolveExportFormat(exportFormat: SettingsManager.ExportFormat): Mp3Exporter.Format {
+        return when (exportFormat) {
+            SettingsManager.ExportFormat.AUTO ->
+                if (isEncoderAvailable(MediaFormat.MIMETYPE_AUDIO_MPEG)) Mp3Exporter.Format.MP3
+                else Mp3Exporter.Format.AAC
+            SettingsManager.ExportFormat.MP3 ->
+                if (isEncoderAvailable(MediaFormat.MIMETYPE_AUDIO_MPEG)) Mp3Exporter.Format.MP3
+                else Mp3Exporter.Format.AAC // Fall back if MP3 not available
+            SettingsManager.ExportFormat.AAC ->
+                Mp3Exporter.Format.AAC
+        }
     }
 
     private fun isEncoderAvailable(mime: String): Boolean {
@@ -194,11 +229,18 @@ class ProjectDetailActivity : AppCompatActivity() {
         }
 
         val inputFile = File(recording.audioPath)
+        // Get the user's preferred export format
+        val exportFormat = SettingsManager.getExportFormat(this)
+        val forcedFormat = when (exportFormat) {
+            SettingsManager.ExportFormat.AUTO -> null // Let exporter auto-detect
+            SettingsManager.ExportFormat.MP3 -> Mp3Exporter.Format.MP3
+            SettingsManager.ExportFormat.AAC -> Mp3Exporter.Format.AAC
+        }
 
         lifecycleScope.launch {
             try {
                 contentResolver.openOutputStream(uri)?.use { outputStream ->
-                    when (val result = Mp3Exporter.export(inputFile, outputStream)) {
+                    when (val result = Mp3Exporter.export(inputFile, outputStream, forcedFormat)) {
                         is Mp3Exporter.Result.Success -> {
                             val formatName = result.format.name
                             Toast.makeText(

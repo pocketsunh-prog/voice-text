@@ -36,15 +36,16 @@ object Mp3Exporter {
     }
 
     /**
-     * Export to the given directory. Tries MP3 first, falls back to AAC.
+     * Export to the given directory.
+     * @param forcedFormat if specified, use this format; if null, auto-detect (MP3 first, then AAC)
      */
-    fun export(inputFile: File, outputDir: File): Result {
+    fun export(inputFile: File, outputDir: File, forcedFormat: Format? = null): Result {
         if (!inputFile.exists()) {
             return Result.Error("Input file not found: ${inputFile.absolutePath}")
         }
         outputDir.mkdirs()
 
-        val format = if (isEncoderAvailable(Format.MP3.mime)) Format.MP3 else Format.AAC
+        val format = resolveFormat(forcedFormat)
         val outputFile = File(outputDir, "${inputFile.nameWithoutExtension}.${format.extension}")
 
         return try {
@@ -59,14 +60,15 @@ object Mp3Exporter {
     }
 
     /**
-     * Export to the given OutputStream. Tries MP3 first, falls back to AAC.
+     * Export to the given OutputStream.
+     * @param forcedFormat if specified, use this format; if null, auto-detect (MP3 first, then AAC)
      */
-    fun export(inputFile: File, outputStream: OutputStream): Result {
+    fun export(inputFile: File, outputStream: OutputStream, forcedFormat: Format? = null): Result {
         if (!inputFile.exists()) {
             return Result.Error("Input file not found: ${inputFile.absolutePath}")
         }
 
-        val format = if (isEncoderAvailable(Format.MP3.mime)) Format.MP3 else Format.AAC
+        val format = resolveFormat(forcedFormat)
         return try {
             outputStream.use { os ->
                 transcode(inputFile, os, format)
@@ -74,6 +76,23 @@ object Mp3Exporter {
         } catch (e: Exception) {
             Log.e(TAG, "Export failed", e)
             Result.Error("Export failed: ${e.message}", e)
+        }
+    }
+
+    /**
+     * Determine which format to use based on user preference and device capability.
+     */
+    private fun resolveFormat(forcedFormat: Format?): Format {
+        return when (forcedFormat) {
+            null -> {
+                // Auto: try MP3 first, fall back to AAC
+                if (isEncoderAvailable(Format.MP3.mime)) Format.MP3 else Format.AAC
+            }
+            Format.MP3 -> {
+                if (isEncoderAvailable(Format.MP3.mime)) Format.MP3
+                else Format.AAC // Fall back if MP3 not available
+            }
+            Format.AAC -> Format.AAC
         }
     }
 
