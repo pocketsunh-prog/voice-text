@@ -293,36 +293,23 @@ class RecordActivity : AppCompatActivity() {
         chronometer.base = startTime + pausedDuration
         chronometer.start()
 
-        // Start SpeechRecognizer FIRST — it has microphone priority.
-        // Only fall back to MediaRecorder if recognition fails completely.
-        var recognitionStarted = false
+        // This device cannot run SpeechRecognizer and MediaRecorder simultaneously.
+        // Strategy: Use MediaRecorder for audio file + system speech dialog for transcription.
+        // The system dialog handles microphone access and works on all devices with Google services.
 
-        if (speechRecognizer != null && recognizerIntent != null) {
-            try {
-                speechRecognizer?.startListening(recognizerIntent)
-                recognitionStarted = true
-                Log.d(TAG, "startRecording: SpeechRecognizer started")
-            } catch (e: Exception) {
-                Log.w(TAG, "startRecording: SpeechRecognizer failed: ${e.message}")
-            }
+        // Start audio recording first
+        var audioStarted = false
+        try {
+            startAudioRecording()
+            audioStarted = true
+            Log.d(TAG, "startRecording: MediaRecorder started")
+        } catch (e: Exception) {
+            Log.w(TAG, "startRecording: MediaRecorder failed: ${e.message}")
         }
 
-        if (!recognitionStarted) {
-            // Speech recognition failed — fall back to audio recording + system dialog
-            Log.d(TAG, "startRecording: Recognition failed, falling back to audio recording")
-            try {
-                startAudioRecording()
-                Log.d(TAG, "startRecording: MediaRecorder started")
-            } catch (e: Exception) {
-                Log.w(TAG, "startRecording: MediaRecorder also failed: ${e.message}")
-                tvStatus.text = "Microphone busy — close other apps and try again"
-            }
-
-            // Launch system speech dialog for transcription
-            startSystemSpeechRecognition()
-        }
-        // If recognition started successfully, do NOT start MediaRecorder
-        // to avoid microphone conflict. Transcription will still work.
+        // Launch system speech recognition dialog for transcription
+        // This shows a dialog for the user to speak into and returns transcribed text
+        startSystemSpeechRecognition()
     }
 
     /**
@@ -364,8 +351,9 @@ class RecordActivity : AppCompatActivity() {
     }
 
     /**
-     * Fallback: launch the system speech recognition dialog.
-     * This works even when SpeechRecognizer is not available.
+     * Launch the system speech recognition dialog for transcription.
+     * This is the primary transcription method since SpeechRecognizer and MediaRecorder
+     * cannot run simultaneously on this device.
      */
     private fun startSystemSpeechRecognition() {
         try {
@@ -374,7 +362,7 @@ class RecordActivity : AppCompatActivity() {
                 putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                 putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, getSpeechLanguageCode(sourceLanguage))
-                putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak now...")
+                putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak now for transcription...")
             }
             startActivityForResult(intent, 300)
         } catch (e: Exception) {
@@ -538,17 +526,30 @@ class RecordActivity : AppCompatActivity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
 
-        // System speech recognition dialog result (fallback)
+        // System speech recognition dialog result (primary transcription method)
         if (requestCode == 300) {
             if (resultCode == RESULT_OK && data != null) {
                 val matches = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
                 if (!matches.isNullOrEmpty()) {
                     val text = matches[0]
-                    accumulatedText += " $text"
+                    accumulatedText = if (accumulatedText.isBlank()) text else "$accumulatedText $text"
                     tvLiveCaption.text = accumulatedText
-                    translateLive(text)
-                    tvStatus.text = getString(R.string.listening)
                     Log.d(TAG, "System speech dialog result: $text")
+
+                    // Translate the full accumulated text
+                    lifecycleScope.launch {
+                        try {
+                            val result = TranslationHelper.translate(accumulatedText, targetLanguage, sourceLanguage)
+                            lastTranslatedText = result.translatedText
+                            tvLiveTranslation.text = result.translatedText
+                            Log.d(TAG, "Translation result: ${result.translatedText}")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Translation failed", e)
+                            tvLiveTranslation.text = "Translation failed: ${e.message ?: "Unknown error"}"
+                        }
+                    }
+
+                    tvStatus.text = getString(R.string.listening)
                 }
             } else {
                 Log.d(TAG, "System speech dialog cancelled or failed: resultCode=$resultCode")
