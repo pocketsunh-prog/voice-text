@@ -91,7 +91,6 @@ class ProjectDetailActivity : AppCompatActivity() {
                     .setNegativeButton(R.string.cancel, null)
                     .show()
             },
-            onTranslateClick = { recording -> translateRecording(recording) },
             onExportMp3Click = { recording -> startExportFlow(recording) },
             onVoiceToTextClick = { recording -> startVoiceToText(recording) }
         )
@@ -131,46 +130,6 @@ class ProjectDetailActivity : AppCompatActivity() {
             }
         } catch (e: Exception) {
             Toast.makeText(this, "Cannot play audio: ${e.message}", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    private fun translateRecording(recording: Recording) {
-        val textToTranslate = recording.transcribedText
-        if (textToTranslate.isBlank()) {
-            Toast.makeText(this, R.string.no_text_to_translate, Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        // Use the recording's stored translation language, or fall back to settings
-        val targetLang = if (recording.translationLang.isNotEmpty()) {
-            recording.translationLang
-        } else {
-            SettingsManager.getTranslationLanguage(this)
-        }
-        val sourceLang = SettingsManager.getSpeechLanguage(this)
-
-        // Check if source and target are the same
-        if (sourceLang.lowercase() == targetLang.lowercase()) {
-            Toast.makeText(this, "Source and target language are the same", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        adapter.setTranslating(recording.id, true)
-
-        lifecycleScope.launch {
-            try {
-                Log.d("Translate", "Translating from $sourceLang to $targetLang: ${textToTranslate.take(50)}...")
-                val result = TranslationHelper.translate(textToTranslate, targetLang, sourceLang)
-                Log.d("Translate", "Translation result: ${result.translatedText.take(50)}...")
-                adapter.setTranslatedText(recording.id, result.translatedText)
-            } catch (e: Exception) {
-                Log.e("Translate", "Translation failed", e)
-                val errorMsg = "Translation failed: ${e.message ?: "Unknown error"}"
-                adapter.setTranslatedText(recording.id, errorMsg)
-                Toast.makeText(this@ProjectDetailActivity, errorMsg, Toast.LENGTH_LONG).show()
-            } finally {
-                adapter.setTranslating(recording.id, false)
-            }
         }
     }
 
@@ -406,39 +365,18 @@ class ProjectDetailActivity : AppCompatActivity() {
     class RecordingAdapter(
         private val onPlayClick: (Recording) -> Unit,
         private val onDeleteClick: (Recording) -> Unit,
-        private val onTranslateClick: (Recording) -> Unit,
         private val onExportMp3Click: (Recording) -> Unit,
         private val onVoiceToTextClick: (Recording) -> Unit
     ) : RecyclerView.Adapter<RecordingAdapter.ViewHolder>() {
 
         private var recordings: List<Recording> = emptyList()
         private val dateFormat = SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.getDefault())
-        private val translatedTexts = mutableMapOf<Long, String>()
-        private val translatingFlags = mutableMapOf<Long, Boolean>()
         private val exportingFlags = mutableMapOf<Long, Boolean>()
         private val transcribingFlags = mutableMapOf<Long, Boolean>()
 
         fun submitList(list: List<Recording>) {
             recordings = list
-            // Pre-populate with existing translations from recordings
-            list.forEach { recording ->
-                if (!recording.translatedText.isNullOrEmpty()) {
-                    translatedTexts[recording.id] = recording.translatedText
-                }
-            }
             notifyDataSetChanged()
-        }
-
-        fun setTranslatedText(recordingId: Long, text: String) {
-            translatedTexts[recordingId] = text
-            val index = recordings.indexOfFirst { it.id == recordingId }
-            if (index >= 0) notifyItemChanged(index)
-        }
-
-        fun setTranslating(recordingId: Long, isTranslating: Boolean) {
-            translatingFlags[recordingId] = isTranslating
-            val index = recordings.indexOfFirst { it.id == recordingId }
-            if (index >= 0) notifyItemChanged(index)
         }
 
         fun setExporting(recordingId: Long, isExporting: Boolean) {
@@ -470,9 +408,7 @@ class ProjectDetailActivity : AppCompatActivity() {
             val playBtn: View = view.findViewById(R.id.btn_play)
             val deleteBtn: View = view.findViewById(R.id.btn_delete)
             val voiceToTextBtn: View = view.findViewById(R.id.btn_voice_to_text)
-            val translateBtn: View = view.findViewById(R.id.btn_translate)
             val exportMp3Btn: View = view.findViewById(R.id.btn_export_mp3)
-            val translatedTextView: TextView = view.findViewById(R.id.recording_translated_text)
         }
 
         override fun onCreateViewHolder(parent: android.view.ViewGroup, viewType: Int): ViewHolder {
@@ -490,27 +426,12 @@ class ProjectDetailActivity : AppCompatActivity() {
             holder.playBtn.setOnClickListener { onPlayClick(recording) }
             holder.deleteBtn.setOnClickListener { onDeleteClick(recording) }
             holder.voiceToTextBtn.setOnClickListener { onVoiceToTextClick(recording) }
-            holder.translateBtn.setOnClickListener { onTranslateClick(recording) }
             holder.exportMp3Btn.setOnClickListener { onExportMp3Click(recording) }
-
-            // Show translated text if available
-            val translatedText = translatedTexts[recording.id]
-            if (!translatedText.isNullOrBlank()) {
-                holder.translatedTextView.text = translatedText
-                holder.translatedTextView.visibility = View.VISIBLE
-            } else {
-                holder.translatedTextView.visibility = View.GONE
-            }
 
             // Show transcribing state
             val isTranscribing = transcribingFlags[recording.id] == true
             holder.voiceToTextBtn.isEnabled = !isTranscribing
             (holder.voiceToTextBtn as? TextView)?.text = if (isTranscribing) "..." else getString(holder, R.string.voice_to_text)
-
-            // Show translating state
-            val isTranslating = translatingFlags[recording.id] == true
-            holder.translateBtn.isEnabled = !isTranslating
-            (holder.translateBtn as? TextView)?.text = if (isTranslating) "..." else getString(holder, R.string.translate)
 
             // Show exporting state
             val isExporting = exportingFlags[recording.id] == true

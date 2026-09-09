@@ -44,6 +44,9 @@ interface RecordingDao {
     @Query("SELECT * FROM recordings WHERE projectId = :projectId ORDER BY createdAt DESC")
     suspend fun getRecordingsForProjectList(projectId: Long): List<Recording>
 
+    @Query("SELECT * FROM recordings WHERE transcribedText != '' ORDER BY createdAt DESC")
+    suspend fun getAllTranscriptions(): List<Recording>
+
     @Query("SELECT * FROM recordings WHERE id = :id")
     suspend fun getRecordingById(id: Long): Recording?
 

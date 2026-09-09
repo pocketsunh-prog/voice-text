@@ -76,6 +76,10 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
 
+        findViewById<TextView>(R.id.btn_transcriptions).setOnClickListener {
+            startActivity(Intent(this, TranscriptionsActivity::class.java))
+        }
+
         loadProjects()
     }
 
