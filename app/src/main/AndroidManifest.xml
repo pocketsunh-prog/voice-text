@@ -28,6 +28,7 @@
         <activity android:name=".ui.RecordActivity" />
         <activity android:name=".ui.ProjectDetailActivity" />
         <activity android:name=".ui.TranscriptionsActivity" />
+        <activity android:name=".ui.TextToVoiceActivity" />
         <activity android:name=".ui.SettingsActivity" />
 
     </application>

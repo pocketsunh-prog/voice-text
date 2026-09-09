@@ -80,6 +80,10 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, TranscriptionsActivity::class.java))
         }
 
+        findViewById<TextView>(R.id.btn_text_to_voice).setOnClickListener {
+            startActivity(Intent(this, TextToVoiceActivity::class.java))
+        }
+
         loadProjects()
     }
 
