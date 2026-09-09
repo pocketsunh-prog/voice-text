@@ -60,6 +60,11 @@
     <string name="export_failed">Export failed</string>
     <string name="no_text_to_translate">No text to translate</string>
     <string name="translation_failed">Translation failed: %1$s</string>
+    <string name="voice_to_text">Voice to Text</string>
+    <string name="transcribing">Transcribing…</string>
+    <string name="transcription_failed">Transcription failed</string>
+    <string name="no_transcription">No transcription yet</string>
+    <string name="transcriptions_title">Voice to Text</string>
     <string name="delete_project">Delete this project?</string>
     <string name="delete_recording">Delete this recording?</string>
     <string name="project_exists">A project with this name already exists</string>

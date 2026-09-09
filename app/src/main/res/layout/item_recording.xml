@@ -74,6 +74,7 @@
 
         </LinearLayout>
 
+        <!-- Transcribed text -->
         <TextView
             android:id="@+id/recording_text"
             android:layout_width="match_parent"
@@ -84,6 +85,17 @@
             android:maxLines="3"
             android:ellipsize="end" />
 
+        <!-- Translated text -->
+        <TextView
+            android:id="@+id/recording_translated_text"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:textColor="@color/accent"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
         <!-- Action buttons row -->
         <LinearLayout
             android:layout_width="match_parent"
@@ -92,11 +104,26 @@
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
+            <!-- Voice to Text button -->
+            <TextView
+                android:id="@+id/btn_voice_to_text"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="?attr/selectableItemBackground"
+                android:clickable="true"
+                android:focusable="true"
+                android:padding="6dp"
+                android:text="@string/voice_to_text"
+                android:textColor="@color/primary"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
             <!-- Translate button -->
             <TextView
                 android:id="@+id/btn_translate"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
                 android:background="?attr/selectableItemBackground"
                 android:clickable="true"
                 android:focusable="true"
@@ -106,7 +133,7 @@
                 android:textSize="13sp"
                 android:textStyle="bold" />
 
-            <!-- Export MP3 button -->
+            <!-- Export Audio button -->
             <TextView
                 android:id="@+id/btn_export_mp3"
                 android:layout_width="wrap_content"
@@ -122,17 +149,6 @@
                 android:textStyle="bold" />
 
         </LinearLayout>
-
-        <!-- Translated text -->
-        <TextView
-            android:id="@+id/recording_translated_text"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:textColor="@color/accent"
-            android:textSize="13sp"
-            android:textStyle="bold"
-            android:visibility="gone" />
 
     </LinearLayout>
 

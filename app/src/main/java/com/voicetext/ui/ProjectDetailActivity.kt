@@ -26,6 +26,10 @@ import java.util.*
 
 class ProjectDetailActivity : AppCompatActivity() {
 
+    private companion object {
+        const val TAG = "ProjectDetailActivity"
+    }
+
     private lateinit var database: AppDatabase
     private lateinit var recordingDao: RecordingDao
     private lateinit var projectDao: ProjectDao
@@ -88,7 +92,8 @@ class ProjectDetailActivity : AppCompatActivity() {
                     .show()
             },
             onTranslateClick = { recording -> translateRecording(recording) },
-            onExportMp3Click = { recording -> startExportFlow(recording) }
+            onExportMp3Click = { recording -> startExportFlow(recording) },
+            onVoiceToTextClick = { recording -> startVoiceToText(recording) }
         )
 
         recyclerView.layoutManager = LinearLayoutManager(this)
@@ -166,6 +171,83 @@ class ProjectDetailActivity : AppCompatActivity() {
             } finally {
                 adapter.setTranslating(recording.id, false)
             }
+        }
+    }
+
+    /**
+     * Voice-to-Text: Play the audio and capture transcription via system speech dialog.
+     * The audio plays through the speaker and the system dialog captures the speech.
+     */
+    private fun startVoiceToText(recording: Recording) {
+        val audioFile = File(recording.audioPath)
+        if (!audioFile.exists()) {
+            Toast.makeText(this, "Audio file not found", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        adapter.setTranscribing(recording.id, true)
+
+        // Show instruction dialog
+        AlertDialog.Builder(this)
+            .setTitle("Voice to Text")
+            .setMessage("The audio will play. Please ensure your microphone is ready to capture the speech.")
+            .setPositiveButton("Start") { _, _ ->
+                playAudioAndTranscribe(recording)
+            }
+            .setNegativeButton("Cancel") { _, _ ->
+                adapter.setTranscribing(recording.id, false)
+            }
+            .show()
+    }
+
+    /**
+     * Play the audio file and launch system speech dialog for transcription.
+     */
+    private fun playAudioAndTranscribe(recording: Recording) {
+        try {
+            player?.release()
+            player = MediaPlayer().apply {
+                setDataSource(recording.audioPath)
+                setOnCompletionListener {
+                    // Audio finished - keep dialog open for a moment then save
+                    Log.d(TAG, "Audio playback completed")
+                }
+                setOnErrorListener { _, what, extra ->
+                    Log.e(TAG, "Audio playback error: what=$what, extra=$extra")
+                    true
+                }
+                prepare()
+                start()
+            }
+
+            // Launch speech dialog while audio is playing
+            launchSpeechDialog(recording)
+        } catch (e: Exception) {
+            Log.e(TAG, "Playback failed", e)
+            // If playback fails, still try the dialog
+            launchSpeechDialog(recording)
+        }
+    }
+
+    /**
+     * Launch system speech recognition dialog.
+     */
+    private fun launchSpeechDialog(recording: Recording) {
+        // Store reference for onActivityResult
+        recordingBeingTranscribed = recording
+
+        try {
+            val intent = android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(android.speech.RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                putExtra(android.speech.RecognizerIntent.EXTRA_MAX_RESULTS, 5)
+                putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "Listening...")
+            }
+            startActivityForResult(intent, 400)
+        } catch (e: Exception) {
+            Log.e(TAG, "Speech dialog failed", e)
+            Toast.makeText(this, "Speech recognition not available", Toast.LENGTH_LONG).show()
+            adapter.setTranscribing(recording.id, false)
         }
     }
 
@@ -276,6 +358,46 @@ class ProjectDetailActivity : AppCompatActivity() {
         }
     }
 
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+
+        // Voice-to-Text speech dialog result
+        if (requestCode == 400) {
+            // Find the recording that was being transcribed
+            // We need to track which recording triggered this
+            val recording = findRecordingBeingTranscribed()
+
+            if (recording != null) {
+                adapter.setTranscribing(recording.id, false)
+
+                if (resultCode == RESULT_OK && data != null) {
+                    val matches = data.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)
+                    if (!matches.isNullOrEmpty()) {
+                        val transcribedText = matches[0]
+
+                        // Save transcription to database
+                        lifecycleScope.launch {
+                            val updatedRecording = recording.copy(transcribedText = transcribedText)
+                            recordingDao.update(updatedRecording)
+                            adapter.updateRecording(updatedRecording)
+                            Toast.makeText(this@ProjectDetailActivity, "Transcription saved", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                } else {
+                    Toast.makeText(this@ProjectDetailActivity, "Transcription cancelled", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    // Track the recording being transcribed
+    private var recordingBeingTranscribed: Recording? = null
+
+    private fun findRecordingBeingTranscribed(): Recording? {
+        return recordingBeingTranscribed
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         player?.release()
@@ -285,7 +407,8 @@ class ProjectDetailActivity : AppCompatActivity() {
         private val onPlayClick: (Recording) -> Unit,
         private val onDeleteClick: (Recording) -> Unit,
         private val onTranslateClick: (Recording) -> Unit,
-        private val onExportMp3Click: (Recording) -> Unit
+        private val onExportMp3Click: (Recording) -> Unit,
+        private val onVoiceToTextClick: (Recording) -> Unit
     ) : RecyclerView.Adapter<RecordingAdapter.ViewHolder>() {
 
         private var recordings: List<Recording> = emptyList()
@@ -293,6 +416,7 @@ class ProjectDetailActivity : AppCompatActivity() {
         private val translatedTexts = mutableMapOf<Long, String>()
         private val translatingFlags = mutableMapOf<Long, Boolean>()
         private val exportingFlags = mutableMapOf<Long, Boolean>()
+        private val transcribingFlags = mutableMapOf<Long, Boolean>()
 
         fun submitList(list: List<Recording>) {
             recordings = list
@@ -324,6 +448,20 @@ class ProjectDetailActivity : AppCompatActivity() {
             if (index >= 0) notifyItemChanged(index)
         }
 
+        fun setTranscribing(recordingId: Long, isTranscribing: Boolean) {
+            transcribingFlags[recordingId] = isTranscribing
+            val index = recordings.indexOfFirst { it.id == recordingId }
+            if (index >= 0) notifyItemChanged(index)
+        }
+
+        fun updateRecording(recording: Recording) {
+            val index = recordings.indexOfFirst { it.id == recording.id }
+            if (index >= 0) {
+                recordings = recordings.toMutableList().also { it[index] = recording }
+                notifyItemChanged(index)
+            }
+        }
+
         inner class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
             val titleView: TextView = view.findViewById(R.id.recording_title)
             val dateView: TextView = view.findViewById(R.id.recording_date)
@@ -331,6 +469,7 @@ class ProjectDetailActivity : AppCompatActivity() {
             val textView: TextView = view.findViewById(R.id.recording_text)
             val playBtn: View = view.findViewById(R.id.btn_play)
             val deleteBtn: View = view.findViewById(R.id.btn_delete)
+            val voiceToTextBtn: View = view.findViewById(R.id.btn_voice_to_text)
             val translateBtn: View = view.findViewById(R.id.btn_translate)
             val exportMp3Btn: View = view.findViewById(R.id.btn_export_mp3)
             val translatedTextView: TextView = view.findViewById(R.id.recording_translated_text)
@@ -347,9 +486,10 @@ class ProjectDetailActivity : AppCompatActivity() {
             holder.titleView.text = recording.title
             holder.dateView.text = dateFormat.format(Date(recording.createdAt))
             holder.durationView.text = formatDuration(recording.duration)
-            holder.textView.text = recording.transcribedText.ifEmpty { "No transcription" }
+            holder.textView.text = recording.transcribedText.ifEmpty { getString(holder, R.string.no_transcription) }
             holder.playBtn.setOnClickListener { onPlayClick(recording) }
             holder.deleteBtn.setOnClickListener { onDeleteClick(recording) }
+            holder.voiceToTextBtn.setOnClickListener { onVoiceToTextClick(recording) }
             holder.translateBtn.setOnClickListener { onTranslateClick(recording) }
             holder.exportMp3Btn.setOnClickListener { onExportMp3Click(recording) }
 
@@ -362,15 +502,24 @@ class ProjectDetailActivity : AppCompatActivity() {
                 holder.translatedTextView.visibility = View.GONE
             }
 
+            // Show transcribing state
+            val isTranscribing = transcribingFlags[recording.id] == true
+            holder.voiceToTextBtn.isEnabled = !isTranscribing
+            (holder.voiceToTextBtn as? TextView)?.text = if (isTranscribing) "..." else getString(holder, R.string.voice_to_text)
+
             // Show translating state
             val isTranslating = translatingFlags[recording.id] == true
             holder.translateBtn.isEnabled = !isTranslating
-            (holder.translateBtn as? TextView)?.text = if (isTranslating) "..." else holder.itemView.context.getString(R.string.translate)
+            (holder.translateBtn as? TextView)?.text = if (isTranslating) "..." else getString(holder, R.string.translate)
 
             // Show exporting state
             val isExporting = exportingFlags[recording.id] == true
             holder.exportMp3Btn.isEnabled = !isExporting
-            (holder.exportMp3Btn as? TextView)?.text = if (isExporting) "..." else holder.itemView.context.getString(R.string.export_audio)
+            (holder.exportMp3Btn as? TextView)?.text = if (isExporting) "..." else getString(holder, R.string.export_audio)
+        }
+
+        private fun getString(holder: ViewHolder, resId: Int): String {
+            return holder.itemView.context.getString(resId)
         }
 
         override fun getItemCount() = recordings.size
